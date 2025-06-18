@@ -1,21 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Comunicados Recentes</h1>
-    <a href="{{ url_for('adicionar_comunicado') }}" class="btn btn-primary">Adicionar Comunicado</a>
-</div>
-
-<div class="row">
+<div class="row g-4">
     {% for comunicado in comunicados %}
-    <div class="col-md-6 mb-4">
-        <div class="card h-100 prioridade-{{ comunicado.prioridade }}">
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card h-100 border-start-4 border-{{ 'danger' if comunicado.prioridade == 'alta' else 'warning' if comunicado.prioridade == 'normal' else 'success' }}">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ comunicado.titulo }}</h5>
+                    <span class="badge bg-{{ 'info' if comunicado.categoria == 'atualização' else 'success' if comunicado.categoria == 'campanha' else 'secondary' }} badge-categoria">
+                        {{ comunicado.categoria }}
+                    </span>
+                </div>
+            </div>
             <div class="card-body">
-                <span class="badge bg-secondary float-end">{{ comunicado.categoria }}</span>
-                <h5 class="card-title">{{ comunicado.titulo }}</h5>
-                <h6 class="card-subtitle mb-2 text-muted">{{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}</h6>
-                <p class="card-text">{{ comunicado.conteudo[:150] }}...</p>
-                <a href="{{ url_for('ver_comunicado', id=comunicado.id) }}" class="card-link">Ler mais</a>
+                <p class="card-text">{{ comunicado.conteudo }}</p>
+            </div>
+            <div class="card-footer bg-white border-0 pt-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> {{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}
+                    </small>
+                    <a href="/deletar/{{ comunicado.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Tem certeza que deseja excluir?')">
+                        <i class="bi bi-trash"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </div>

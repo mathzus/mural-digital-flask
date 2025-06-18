@@ -1,37 +1,46 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="mb-4">Adicionar Novo Comunicado</h1>
-
-<form method="POST">
-    <div class="mb-3">
-        <label for="titulo" class="form-label">Título</label>
-        <input type="text" class="form-control" id="titulo" name="titulo" required>
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h5><i class="bi bi-plus-circle"></i> Novo Comunicado</h5>
     </div>
-    
-    <div class="mb-3">
-        <label for="conteudo" class="form-label">Conteúdo</label>
-        <textarea class="form-control" id="conteudo" name="conteudo" rows="5" required></textarea>
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Título</label>
+                <input type="text" class="form-control" name="titulo" required>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Conteúdo</label>
+                <textarea class="form-control" name="conteudo" rows="5" required></textarea>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Prioridade</label>
+                    <select class="form-select" name="prioridade">
+                        <option value="alta" class="text-danger">🔴 Alta</option>
+                        <option value="normal" selected>🟡 Normal</option>
+                        <option value="baixa" class="text-success">🟢 Baixa</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Categoria</label>
+                    <select class="form-select" name="categoria">
+                        <option value="comunicado">📢 Comunicado</option>
+                        <option value="atualização">🔄 Atualização</option>
+                        <option value="campanha">📢 Campanha</option>
+                    </select>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-send"></i> Publicar
+            </button>
+        </form>
     </div>
-    
-    <div class="mb-3">
-        <label for="prioridade" class="form-label">Prioridade</label>
-        <select class="form-select" id="prioridade" name="prioridade">
-            <option value="alta">Alta</option>
-            <option value="normal" selected>Normal</option>
-            <option value="baixa">Baixa</option>
-        </select>
-    </div>
-    
-    <div class="mb-3">
-        <label for="categoria" class="form-label">Categoria</label>
-        <select class="form-select" id="categoria" name="categoria">
-            <option value="comunicado">Comunicado</option>
-            <option value="atualizacao">Atualização</option>
-            <option value="campanha">Campanha</option>
-        </select>
-    </div>
-    
-    <button type="submit" class="btn btn-primary">Publicar Comunicado</button>
-</form>
+</div>
 {% endblock %}
