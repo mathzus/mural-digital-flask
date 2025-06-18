@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Comunicados Recentes</h1>
+    <a href="{{ url_for('adicionar_comunicado') }}" class="btn btn-primary">Adicionar Comunicado</a>
+</div>
+
+<div class="row">
+    {% for comunicado in comunicados %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100 prioridade-{{ comunicado.prioridade }}">
+            <div class="card-body">
+                <span class="badge bg-secondary float-end">{{ comunicado.categoria }}</span>
+                <h5 class="card-title">{{ comunicado.titulo }}</h5>
+                <h6 class="card-subtitle mb-2 text-muted">{{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}</h6>
+                <p class="card-text">{{ comunicado.conteudo[:150] }}...</p>
+                <a href="{{ url_for('ver_comunicado', id=comunicado.id) }}" class="card-link">Ler mais</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
