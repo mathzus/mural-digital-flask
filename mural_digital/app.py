@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
 
 # Configuração do banco de dados
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://mural_db_user:rYydB8csVriGnSOgI8Cx8X90UiCUXRiw@dpg-d19jmsm3jp1c73cgs400-a/mural_db"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
