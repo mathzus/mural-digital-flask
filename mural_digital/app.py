@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from cryptography.fernet import Fernet
 from markupsafe import escape
+from sqlalchemy.exc import OperationalError
 
 app = Flask(__name__)
 
@@ -16,10 +17,13 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-local')
 app.config['CHAVE_CRIPTOGRAFIA'] = os.environ.get('CHAVE_CRIPTOGRAFIA', Fernet.generate_key().decode())
 cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 
-# Banco de Dados
-DATABASE_URL = os.environ.get('DATABASE_URL', '').replace("postgres://", "postgresql://", 1)
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL or 'sqlite:///instance/mural.db'
+# Banco de Dados - Configuração otimizada para Render
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', '').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,  # Reconecta automaticamente se a conexão cair
+    'pool_recycle': 300,    # Recicla conexões a cada 5 minutos
+}
 db = SQLAlchemy(app)
 
 # =============================================
@@ -49,17 +53,41 @@ class Comunicado(db.Model):
     categoria = db.Column(db.String(50), default='comunicado')
 
 # =============================================
+# VERIFICAÇÃO DE CONEXÃO COM O BANCO
+# =============================================
+def verificar_conexao_banco():
+    try:
+        db.session.execute("SELECT 1")
+        return True
+    except OperationalError as e:
+        print(f"Erro de conexão com o banco: {str(e)}")
+        return False
+
+# =============================================
 # ROTAS PRINCIPAIS
 # =============================================
 @app.route('/')
 def index():
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados. Tente novamente.', 'danger')
+        return render_template('index.html', comunicados=[])
+    
     if not session.get('termos_aceitos'):
         return redirect(url_for('termos'))
-    comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).all()
-    return render_template('index.html', comunicados=comunicados)
+    
+    try:
+        comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).all()
+        return render_template('index.html', comunicados=comunicados)
+    except Exception as e:
+        flash('Erro ao carregar comunicados', 'danger')
+        return render_template('index.html', comunicados=[])
 
 @app.route('/adicionar', methods=['GET', 'POST'])
 def adicionar_comunicado():
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
     if not session.get('termos_aceitos'):
         return redirect(url_for('termos'))
 
@@ -100,11 +128,33 @@ def adicionar_comunicado():
     
     return render_template('adicionar.html')
 
+@app.route('/comunicado/<int:id>')
+def ver_comunicado(id):
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
+    try:
+        comunicado = Comunicado.query.options(
+            db.joinedload(Comunicado.comentarios).order_by(Comentario.data.desc()),
+            db.joinedload(Comunicado.reacoes)
+        ).get_or_404(id)
+        
+        comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
+        return render_template('comunicado.html', comunicado=comunicado)
+    except Exception as e:
+        flash(f'Erro ao carregar comunicado: {str(e)}', 'danger')
+        return redirect(url_for('index'))
+
 # =============================================
 # ROTAS DE ENGAJAMENTO
 # =============================================
 @app.route('/reagir/<int:comunicado_id>/<tipo>')
 def reagir(comunicado_id, tipo):
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
     if tipo not in ['like', 'urgente']:
         flash('Tipo de reação inválido', 'danger')
         return redirect(url_for('ver_comunicado', id=comunicado_id))
@@ -135,6 +185,10 @@ def reagir(comunicado_id, tipo):
 
 @app.route('/comentar/<int:comunicado_id>', methods=['POST'])
 def comentar(comunicado_id):
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
     texto = request.form.get('texto', '').strip()
     autor = request.form.get('autor', 'Anônimo').strip()[:100]
 
@@ -159,6 +213,10 @@ def comentar(comunicado_id):
 
 @app.route('/deletar_comentario/<int:id>', methods=['POST'])
 def deletar_comentario(id):
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         comentario = Comentario.query.get_or_404(id)
         comunicado_id = comentario.comunicado_id
@@ -204,23 +262,12 @@ def solicitar_exclusao():
 # =============================================
 # ROTAS AUXILIARES
 # =============================================
-@app.route('/comunicado/<int:id>')
-def ver_comunicado(id):
-    try:
-        comunicado = Comunicado.query.options(
-            db.joinedload(Comunicado.comentarios).order_by(Comentario.data.desc()),
-            db.joinedload(Comunicado.reacoes)
-        ).get_or_404(id)
-        
-        # Segurança: escape do conteúdo e tratamento de quebras de linha
-        comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
-        return render_template('comunicado.html', comunicado=comunicado)
-    except Exception as e:
-        flash('Comunicado não encontrado', 'danger')
-        return redirect(url_for('index'))
-
 @app.route('/deletar/<int:id>', methods=['POST'])
 def deletar_comunicado(id):
+    if not verificar_conexao_banco():
+        flash('Erro de conexão com o banco de dados', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         comunicado = Comunicado.query.get_or_404(id)
         Comentario.query.filter_by(comunicado_id=id).delete()
@@ -235,11 +282,33 @@ def deletar_comunicado(id):
     return redirect(url_for('index'))
 
 # =============================================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO DO BANCO DE DADOS
 # =============================================
-with app.app_context():
-    db.create_all()
+def inicializar_banco():
+    with app.app_context():
+        try:
+            db.create_all()
+            print("✅ Banco de dados inicializado com sucesso!")
+            
+            # Verifica se as tabelas foram criadas corretamente
+            tabelas = db.engine.table_names()
+            print(f"📊 Tabelas existentes: {tabelas}")
+            
+        except Exception as e:
+            print(f"❌ Erro ao inicializar banco de dados: {str(e)}")
+            # Tentativa de reconexão
+            try:
+                db.session.rollback()
+                db.create_all()
+                print("✅ Reconexão bem-sucedida!")
+            except Exception as e2:
+                print(f"❌ Falha na reconexão: {str(e2)}")
 
+inicializar_banco()
+
+# =============================================
+# CONFIGURAÇÃO DO SERVIDOR
+# =============================================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
