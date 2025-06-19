@@ -35,17 +35,6 @@
             padding: 5px 10px;
             border-radius: 20px;
         }
-        .btn-float {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            font-size: 24px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            position: fixed;
-            bottom: 70px;
-            right: 20px;
-            z-index: 1000;
-        }
         .prioridade-alta {
             border-left: 4px solid #dc3545;
         }
@@ -67,6 +56,13 @@
             padding: 10px 0;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
             z-index: 999;
+        }
+        /* Modal de termos */
+        #termosModal {
+            background-color: rgba(0,0,0,0.5);
+        }
+        #termosModal .modal-content {
+            border-radius: 15px;
         }
     </style>
 </head>
@@ -97,10 +93,6 @@
         {% block content %}{% endblock %}
     </div>
 
-    <a href="{{ url_for('adicionar_comunicado') }}" class="btn btn-primary btn-float">
-        <i class="bi bi-plus-lg"></i>
-    </a>
-
     <footer class="text-center text-muted">
         <small>
             <a href="#" data-bs-toggle="modal" data-bs-target="#modalLGPD" class="text-decoration-none">
@@ -111,6 +103,35 @@
         </small>
     </footer>
 
+    <!-- Modal de Termos -->
+    {% if not session.get('termos_aceitos') %}
+    <div class="modal fade show" id="termosModal" tabindex="-1" aria-labelledby="termosModalLabel" aria-hidden="false" style="display: block;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="termosModalLabel"><i class="bi bi-file-earmark-text"></i> Termos de Uso</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Para continuar usando o Mural Digital, por favor leia e aceite nossos termos:</p>
+                    <ul>
+                        <li>Seus dados serão armazenados de forma segura</li>
+                        <li>Você pode solicitar exclusão a qualquer momento</li>
+                        <li>O sistema utiliza cookies essenciais</li>
+                    </ul>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="concordoCheck">
+                        <label class="form-check-label" for="concordoCheck">Li e aceito os termos</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="btnAceitarTermos" disabled>Aceitar e Continuar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Modal LGPD -->
     <div class="modal fade" id="modalLGPD" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -136,18 +157,42 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        })
-        
-        if(window.location.pathname.includes('/comunicado/')) {
-            window.addEventListener('pageshow', function(event) {
-                if (event.persisted) {
-                    window.location.reload();
-                }
+        // Controle do modal de termos
+        document.addEventListener('DOMContentLoaded', function() {
+            const concordoCheck = document.getElementById('concordoCheck');
+            const btnAceitarTermos = document.getElementById('btnAceitarTermos');
+            
+            if (concordoCheck && btnAceitarTermos) {
+                concordoCheck.addEventListener('change', function() {
+                    btnAceitarTermos.disabled = !this.checked;
+                });
+                
+                btnAceitarTermos.addEventListener('click', function() {
+                    fetch("{{ url_for('termos') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        },
+                        body: 'concordo=true'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const termosModal = bootstrap.Modal.getInstance(document.getElementById('termosModal'));
+                            termosModal.hide();
+                            location.reload();
+                        }
+                    });
+                });
+            }
+            
+            // Inicializa tooltips
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
             });
-        }
+        });
     </script>
 </body>
 </html>

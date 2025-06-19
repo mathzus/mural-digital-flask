@@ -11,7 +11,7 @@ from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__, template_folder='templates')
 
-# Configurações para produção no Render
+# Configurações
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', Fernet.generate_key().decode())
 app.config['CHAVE_CRIPTOGRAFIA'] = os.environ.get('CHAVE_CRIPTOGRAFIA', Fernet.generate_key().decode())
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
@@ -30,7 +30,7 @@ csrf = CSRFProtect(app)
 db = SQLAlchemy(app)
 cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 
-# Configuração de logs para produção
+# Configuração de logs
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -59,46 +59,37 @@ class Comunicado(db.Model):
     prioridade = db.Column(db.String(20), default='normal')
     categoria = db.Column(db.String(50), default='comunicado')
 
-# Função melhorada para verificar conexão com o banco
+# Funções auxiliares
 def verificar_conexao_banco():
     try:
         with db.engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        logger.info("Conexão com o banco de dados estabelecida com sucesso")
         return True
     except Exception as e:
         logger.error(f"Erro na conexão com o banco: {str(e)}")
         return False
 
+def contar_reacoes(comunicado_id, tipo):
+    return Reacao.query.filter_by(comunicado_id=comunicado_id, tipo=tipo).count()
+
 # Rotas
 @app.route('/')
 def index():
     if not verificar_conexao_banco():
-        flash('Sistema temporariamente indisponível. Por favor, tente novamente mais tarde.', 'danger')
+        flash('Erro de conexão com o banco de dados', 'danger')
         return render_template('index.html', comunicados=[])
     
-    if not session.get('termos_aceitos'):
-        return redirect(url_for('termos'))
-    
-    try:
-        comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).limit(100).all()
-        return render_template('index.html', comunicados=comunicados)
-    except Exception as e:
-        logger.error(f"Erro ao buscar comunicados: {str(e)}")
-        flash('Erro ao carregar comunicados', 'danger')
-        return render_template('index.html', comunicados=[])
+    comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).limit(100).all()
+    return render_template('index.html', comunicados=comunicados)
 
 @app.route('/adicionar', methods=['GET', 'POST'])
 def adicionar_comunicado():
-    if not session.get('termos_aceitos'):
-        return redirect(url_for('termos'))
-
     if request.method == 'POST':
         titulo = request.form['titulo'].strip()
         conteudo = request.form['conteudo'].strip()
         
-        if len(titulo) < 5 or len(conteudo) < 10:
-            flash('Título deve ter pelo menos 5 caracteres e conteúdo pelo menos 10 caracteres', 'danger')
+        if not titulo or not conteudo:
+            flash('Título e conteúdo são obrigatórios', 'danger')
             return redirect(url_for('adicionar_comunicado'))
             
         novo_comunicado = Comunicado(
@@ -115,25 +106,25 @@ def adicionar_comunicado():
         except Exception as e:
             db.session.rollback()
             logger.error(f"Erro ao adicionar comunicado: {str(e)}")
-            flash('Erro ao adicionar comunicado. Por favor, tente novamente.', 'danger')
+            flash('Erro ao adicionar comunicado', 'danger')
     
     return render_template('adicionar.html')
 
 @app.route('/comunicado/<int:id>')
 def ver_comunicado(id):
-    try:
-        comunicado = Comunicado.query.get_or_404(id)
-        comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
-        return render_template('comunicado.html', comunicado=comunicado)
-    except Exception as e:
-        logger.error(f"Erro ao acessar comunicado {id}: {str(e)}")
-        flash('Comunicado não encontrado', 'danger')
-        return redirect(url_for('index'))
+    comunicado = Comunicado.query.get_or_404(id)
+    comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
+    
+    # Contar reações
+    likes = contar_reacoes(id, 'like')
+    dislikes = contar_reacoes(id, 'dislike')
+    
+    return render_template('comunicado.html', comunicado=comunicado, likes=likes, dislikes=dislikes)
 
 @app.route('/deletar/<int:id>', methods=['POST'])
 def deletar_comunicado(id):
+    comunicado = Comunicado.query.get_or_404(id)
     try:
-        comunicado = Comunicado.query.get_or_404(id)
         Comentario.query.filter_by(comunicado_id=id).delete()
         Reacao.query.filter_by(comunicado_id=id).delete()
         db.session.delete(comunicado)
@@ -141,32 +132,42 @@ def deletar_comunicado(id):
         flash('Comunicado deletado com sucesso!', 'success')
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Erro ao deletar comunicado {id}: {str(e)}")
+        logger.error(f"Erro ao deletar comunicado: {str(e)}")
         flash('Erro ao deletar comunicado', 'danger')
     
     return redirect(url_for('index'))
 
 @app.route('/reagir/<int:comunicado_id>/<tipo>')
 def reagir(comunicado_id, tipo):
-    if tipo not in ['like', 'urgente']:
+    if tipo not in ['like', 'dislike']:
         return redirect(url_for('ver_comunicado', id=comunicado_id))
 
     ip_usuario = request.remote_addr
     try:
+        # Verificar se já existe reação deste usuário
         reacao_existente = Reacao.query.filter_by(
             comunicado_id=comunicado_id,
             usuario_ip=ip_usuario
         ).first()
 
-        if not reacao_existente:
+        if reacao_existente:
+            # Se já reagiu, atualiza ou remove a reação
+            if reacao_existente.tipo == tipo:
+                # Remove se for a mesma reação
+                db.session.delete(reacao_existente)
+            else:
+                # Atualiza se for diferente
+                reacao_existente.tipo = tipo
+        else:
+            # Adiciona nova reação
             nova_reacao = Reacao(
                 tipo=tipo,
                 comunicado_id=comunicado_id,
                 usuario_ip=ip_usuario
             )
             db.session.add(nova_reacao)
-            db.session.commit()
-            flash('Reação registrada!', 'success')
+        
+        db.session.commit()
     except Exception as e:
         db.session.rollback()
         logger.error(f"Erro ao registrar reação: {str(e)}")
@@ -196,57 +197,30 @@ def comentar(comunicado_id):
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
-@app.route('/termos', methods=['GET', 'POST'])
+@app.route('/termos', methods=['POST'])
 def termos():
-    if request.method == 'POST':
-        if request.form.get('concordo'):
-            session['termos_aceitos'] = True
-            return redirect(url_for('index'))
-        else:
-            flash('Você precisa aceitar os termos para continuar', 'warning')
-    return render_template('termos.html')
-
-@app.route('/solicitar_exclusao', methods=['POST'])
-def solicitar_exclusao():
-    email = request.form.get('email', '').strip()
-    if not email:
-        flash('Por favor, forneça um e-mail válido', 'danger')
-        return redirect(url_for('termos'))
-    
-    try:
-        # Implementação do envio de e-mail ficaria aqui
-        flash('Solicitação de exclusão recebida. Verifique seu e-mail para confirmação.', 'info')
-    except Exception as e:
-        logger.error(f"Erro ao processar solicitação de exclusão: {str(e)}")
-        flash('Erro ao processar sua solicitação', 'danger')
-    
-    return redirect(url_for('index'))
+    if request.form.get('concordo'):
+        session['termos_aceitos'] = True
+        return jsonify({'success': True})
+    return jsonify({'success': False}), 400
 
 @app.route('/health')
 def health_check():
-    try:
-        db_ok = verificar_conexao_banco()
-        status = {
-            'status': 'healthy' if db_ok else 'unhealthy',
-            'database': 'connected' if db_ok else 'disconnected',
-            'timestamp': datetime.utcnow().isoformat(),
-            'service': 'mural-digital-flask'
-        }
-        return jsonify(status), 200 if db_ok else 503
-    except Exception as e:
-        logger.error(f"Erro no health check: {str(e)}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    db_ok = verificar_conexao_banco()
+    status = {
+        'database': 'online' if db_ok else 'offline',
+        'status': 'up' if db_ok else 'down',
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    return jsonify(status), 200 if db_ok else 500
 
-# Inicialização otimizada para produção
+# Inicialização
 with app.app_context():
     try:
         db.create_all()
-        logger.info("Tabelas do banco de dados verificadas/criadas com sucesso")
     except Exception as e:
-        logger.error(f"Erro ao inicializar banco de dados: {str(e)}")
-        raise e  # Isso fará com que o deploy falhe se não conseguir conectar ao banco
+        logger.error(f"Erro ao criar tabelas: {str(e)}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true')

@@ -26,6 +26,10 @@
                             <i class="bi bi-hand-thumbs-up text-primary"></i>
                             {{ comunicado.reacoes|selectattr('tipo', 'equalto', 'like')|list|count }}
                         </span>
+                        <span class="badge bg-light text-dark me-2">
+                            <i class="bi bi-hand-thumbs-down text-danger"></i>
+                            {{ comunicado.reacoes|selectattr('tipo', 'equalto', 'dislike')|list|count }}
+                        </span>
                         <span class="badge bg-light text-dark">
                             <i class="bi bi-chat-left-text text-success"></i>
                             {{ comunicado.comentarios|count }}
