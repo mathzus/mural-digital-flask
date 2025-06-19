@@ -1,14 +1,16 @@
-# app.py
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sua_chave_secreta_aqui')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-# Configuração do banco de dados
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://")
+# Configuração do Banco de Dados (PostgreSQL no Render ou SQLite local)
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL or 'sqlite:///instance/mural.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -18,10 +20,10 @@ class Comunicado(db.Model):
     titulo = db.Column(db.String(100), nullable=False)
     conteudo = db.Column(db.Text, nullable=False)
     data_publicacao = db.Column(db.DateTime, default=datetime.utcnow)
-    prioridade = db.Column(db.String(20), default='normal')  # alta, normal, baixa
-    categoria = db.Column(db.String(50))  # comunicado, atualização, campanha
+    prioridade = db.Column(db.String(20), default='normal')
+    categoria = db.Column(db.String(50))
 
-# Cria as tabelas no contexto da aplicação
+# Cria o banco de dados
 with app.app_context():
     db.create_all()
 
@@ -63,9 +65,9 @@ def deletar_comunicado(id):
     comunicado = Comunicado.query.get_or_404(id)
     db.session.delete(comunicado)
     db.session.commit()
-    
     flash('Comunicado removido com sucesso!', 'success')
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=False)  # debug=False para produção!
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)

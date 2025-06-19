@@ -6,10 +6,10 @@
         <span class="badge bg-secondary float-end">{{ comunicado.categoria }}</span>
         <h2 class="card-title">{{ comunicado.titulo }}</h2>
         <h6 class="card-subtitle mb-2 text-muted">{{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}</h6>
-        <p class="card-text mt-4">{{ comunicado.conteudo|replace('\n', '<br>')|safe }}</p>
+        <p class="card-text mt-4">{{ comunicado.conteudo|e|replace('\n', '<br>')|safe }}</p>
     </div>
 </div>
 
 <a href="{{ url_for('index') }}" class="btn btn-secondary">Voltar</a>
-<a href="{{ url_for('deletar_comunicado', id=comunicado.id) }}" class="btn btn-danger float-end" onclick="return confirm('Tem certeza que deseja excluir este comunicado?')">Excluir</a>
+<a href="{{ url_for('deletar_comunicado', id=comunicado.id) }}" class="btn btn-danger float-end" onclick="return confirm('Tem certeza?')">Excluir</a>
 {% endblock %}
