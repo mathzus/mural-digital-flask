@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
 from cryptography.fernet import Fernet
+from markupsafe import escape
 
 app = Flask(__name__)
 
@@ -36,7 +37,7 @@ class Comentario(db.Model):
     texto = db.Column(db.Text, nullable=False)
     data = db.Column(db.DateTime, default=datetime.utcnow)
     comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicado.id'))
-    autor = db.Column(db.String(100), default='Anônimo')
+    autor = db.Column(db.String(100), nullable=False, default='Anônimo')
     comunicado = db.relationship('Comunicado', backref='comentarios')
 
 class Comunicado(db.Model):
@@ -45,7 +46,7 @@ class Comunicado(db.Model):
     conteudo = db.Column(db.Text, nullable=False)
     data_publicacao = db.Column(db.DateTime, default=datetime.utcnow)
     prioridade = db.Column(db.String(20), default='normal')
-    categoria = db.Column(db.String(50))
+    categoria = db.Column(db.String(50), default='comunicado')
 
 # =============================================
 # ROTAS PRINCIPAIS
@@ -63,15 +64,29 @@ def adicionar_comunicado():
         return redirect(url_for('termos'))
 
     if request.method == 'POST':
-        if not request.form['titulo'] or not request.form['conteudo']:
+        titulo = request.form.get('titulo', '').strip()
+        conteudo = request.form.get('conteudo', '').strip()
+        prioridade = request.form.get('prioridade', 'normal')
+        categoria = request.form.get('categoria', 'comunicado')
+
+        if not titulo or not conteudo:
             flash('Preencha todos os campos obrigatórios!', 'danger')
             return redirect(url_for('adicionar_comunicado'))
 
+        # Validações
+        prioridades_validas = ['alta', 'normal', 'baixa']
+        categorias_validas = ['comunicado', 'atualização', 'campanha']
+        
+        if prioridade not in prioridades_validas:
+            prioridade = 'normal'
+        if categoria not in categorias_validas:
+            categoria = 'comunicado'
+
         novo_comunicado = Comunicado(
-            titulo=request.form['titulo'].strip(),
-            conteudo=request.form['conteudo'].strip(),
-            prioridade=request.form.get('prioridade', 'normal'),
-            categoria=request.form.get('categoria', 'comunicado')
+            titulo=titulo,
+            conteudo=conteudo,
+            prioridade=prioridade,
+            categoria=categoria
         )
         
         try:
@@ -121,6 +136,8 @@ def reagir(comunicado_id, tipo):
 @app.route('/comentar/<int:comunicado_id>', methods=['POST'])
 def comentar(comunicado_id):
     texto = request.form.get('texto', '').strip()
+    autor = request.form.get('autor', 'Anônimo').strip()[:100]
+
     if not texto:
         flash('O comentário não pode estar vazio', 'danger')
         return redirect(url_for('ver_comunicado', id=comunicado_id))
@@ -128,6 +145,7 @@ def comentar(comunicado_id):
     try:
         novo_comentario = Comentario(
             texto=texto,
+            autor=autor,
             comunicado_id=comunicado_id
         )
         db.session.add(novo_comentario)
@@ -136,6 +154,20 @@ def comentar(comunicado_id):
     except Exception as e:
         db.session.rollback()
         flash('Erro ao adicionar comentário', 'danger')
+    
+    return redirect(url_for('ver_comunicado', id=comunicado_id))
+
+@app.route('/deletar_comentario/<int:id>', methods=['POST'])
+def deletar_comentario(id):
+    try:
+        comentario = Comentario.query.get_or_404(id)
+        comunicado_id = comentario.comunicado_id
+        db.session.delete(comentario)
+        db.session.commit()
+        flash('Comentário removido!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Erro ao excluir comentário', 'danger')
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
@@ -162,6 +194,7 @@ def solicitar_exclusao():
 
     try:
         email_cripto = cipher_suite.encrypt(email.encode()).decode()
+        # Aqui você salvaria email_cripto no banco de dados
         flash('Solicitação recebida. Seus dados serão processados em até 48h.', 'info')
     except Exception as e:
         flash('Erro ao processar sua solicitação', 'danger')
@@ -174,13 +207,19 @@ def solicitar_exclusao():
 @app.route('/comunicado/<int:id>')
 def ver_comunicado(id):
     try:
-        comunicado = Comunicado.query.get_or_404(id)
+        comunicado = Comunicado.query.options(
+            db.joinedload(Comunicado.comentarios).order_by(Comentario.data.desc()),
+            db.joinedload(Comunicado.reacoes)
+        ).get_or_404(id)
+        
+        # Segurança: escape do conteúdo e tratamento de quebras de linha
+        comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
         return render_template('comunicado.html', comunicado=comunicado)
     except Exception as e:
         flash('Comunicado não encontrado', 'danger')
         return redirect(url_for('index'))
 
-@app.route('/deletar/<int:id>')
+@app.route('/deletar/<int:id>', methods=['POST'])
 def deletar_comunicado(id):
     try:
         comunicado = Comunicado.query.get_or_404(id)
