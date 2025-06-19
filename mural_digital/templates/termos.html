@@ -1,21 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card shadow">
+<div class="card border-0 shadow-sm">
     <div class="card-header bg-primary text-white">
-        <h4>📜 Termos de Uso e Política de Privacidade</h4>
+        <h5><i class="bi bi-file-earmark-text"></i> Termos de Uso</h5>
     </div>
     <div class="card-body">
-        <p>Para usar o Mural Digital, leia e aceite:</p>
-        <ul>
-            <li>Seus dados serão armazenados de forma segura.</li>
-            <li>Usamos cookies essenciais para funcionamento do sistema.</li>
-            <li>Você pode solicitar exclusão de seus dados a qualquer momento.</li>
+        <p>Por favor, leia e aceite os termos para continuar:</p>
+        <ul class="mb-4">
+            <li>Seus dados serão armazenados de forma segura</li>
+            <li>Você pode solicitar exclusão a qualquer momento</li>
+            <li>O sistema utiliza cookies essenciais</li>
         </ul>
-        <form method="POST" action="{{ url_for('aceitar_termos') }}">
+        
+        <form method="POST" action="{{ url_for('termos') }}">
             <div class="form-check mb-3">
                 <input class="form-check-input" type="checkbox" id="concordo" name="concordo" required>
-                <label class="form-check-label" for="concordo">Li e concordo com os termos.</label>
+                <label class="form-check-label" for="concordo">Li e aceito os termos</label>
             </div>
             <button type="submit" class="btn btn-primary">Continuar</button>
         </form>
