@@ -115,11 +115,24 @@ def ver_comunicado(id):
     comunicado = Comunicado.query.get_or_404(id)
     comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
     
+    # Verificar se o usuário já reagiu
+    ip_usuario = request.remote_addr
+    reacao_usuario = Reacao.query.filter_by(
+        comunicado_id=id,
+        usuario_ip=ip_usuario
+    ).first()
+    
     # Contar reações
     likes = contar_reacoes(id, 'like')
     dislikes = contar_reacoes(id, 'dislike')
     
-    return render_template('comunicado.html', comunicado=comunicado, likes=likes, dislikes=dislikes)
+    return render_template(
+        'comunicado.html', 
+        comunicado=comunicado,
+        likes=likes,
+        dislikes=dislikes,
+        reacao_usuario=reacao_usuario.tipo if reacao_usuario else None
+    )
 
 @app.route('/deletar/<int:id>', methods=['POST'])
 def deletar_comunicado(id):
@@ -203,6 +216,22 @@ def termos():
         session['termos_aceitos'] = True
         return jsonify({'success': True})
     return jsonify({'success': False}), 400
+
+@app.route('/solicitar_exclusao', methods=['POST'])
+def solicitar_exclusao():
+    email = request.form.get('email', '').strip()
+    if not email:
+        flash('Por favor, forneça um e-mail válido', 'danger')
+        return redirect(url_for('index'))
+    
+    try:
+        # Aqui você implementaria a lógica de envio de e-mail
+        flash('Solicitação de exclusão recebida. Verifique seu e-mail para confirmação.', 'info')
+    except Exception as e:
+        logger.error(f"Erro ao processar solicitação de exclusão: {str(e)}")
+        flash('Erro ao processar sua solicitação', 'danger')
+    
+    return redirect(url_for('index'))
 
 @app.route('/health')
 def health_check():
