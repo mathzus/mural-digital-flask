@@ -7,6 +7,7 @@
     </div>
     <div class="card-body">
         <form method="POST" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="mb-3">
                 <label class="form-label">Título <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" name="titulo" 

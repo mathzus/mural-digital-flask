@@ -1,5 +1,4 @@
-# app.py
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
@@ -7,25 +6,31 @@ from cryptography.fernet import Fernet
 from markupsafe import escape
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+import logging
 
 app = Flask(__name__)
 
-# =============================================
-# CONFIGURAÇÕES
-# =============================================
-# Segurança
+# Configurações
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-local')
 app.config['CHAVE_CRIPTOGRAFIA'] = os.environ.get('CHAVE_CRIPTOGRAFIA', Fernet.generate_key().decode())
-cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
-
-# Banco de Dados
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', '').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+    'pool_timeout': 30,
+    'max_overflow': 60,
+    'pool_size': 10
+}
 
-# =============================================
-# MODELOS (TABELAS)
-# =============================================
+db = SQLAlchemy(app)
+cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
+
+# Configuração de logs
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
+# Modelos
 class Reacao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tipo = db.Column(db.String(20), nullable=False)
@@ -49,19 +54,17 @@ class Comunicado(db.Model):
     prioridade = db.Column(db.String(20), default='normal')
     categoria = db.Column(db.String(50), default='comunicado')
 
-# =============================================
-# VERIFICAÇÃO DE CONEXÃO COM O BANCO
-# =============================================
+# Funções auxiliares
 def verificar_conexao_banco():
     try:
-        db.session.execute(text("SELECT 1"))
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         return True
-    except Exception:
+    except Exception as e:
+        app.logger.error(f"Erro na conexão com o banco: {str(e)}")
         return False
 
-# =============================================
-# ROTAS PRINCIPAIS
-# =============================================
+# Rotas
 @app.route('/')
 def index():
     if not verificar_conexao_banco():
@@ -91,7 +94,7 @@ def adicionar_comunicado():
             db.session.commit()
             flash('Comunicado adicionado com sucesso!', 'success')
             return redirect(url_for('index'))
-        except Exception:
+        except Exception as e:
             db.session.rollback()
             flash('Erro ao adicionar comunicado', 'danger')
     
@@ -103,9 +106,21 @@ def ver_comunicado(id):
     comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
     return render_template('comunicado.html', comunicado=comunicado)
 
-# =============================================
-# ROTAS DE ENGAJAMENTO
-# =============================================
+@app.route('/deletar/<int:id>', methods=['POST'])
+def deletar_comunicado(id):
+    comunicado = Comunicado.query.get_or_404(id)
+    try:
+        Comentario.query.filter_by(comunicado_id=id).delete()
+        Reacao.query.filter_by(comunicado_id=id).delete()
+        db.session.delete(comunicado)
+        db.session.commit()
+        flash('Comunicado deletado com sucesso!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Erro ao deletar comunicado', 'danger')
+    
+    return redirect(url_for('index'))
+
 @app.route('/reagir/<int:comunicado_id>/<tipo>')
 def reagir(comunicado_id, tipo):
     if tipo not in ['like', 'urgente']:
@@ -141,7 +156,8 @@ def comentar(comunicado_id):
     try:
         novo_comentario = Comentario(
             texto=texto,
-            comunicado_id=comunicado_id
+            comunicado_id=comunicado_id,
+            autor=request.form.get('autor', 'Anônimo')
         )
         db.session.add(novo_comentario)
         db.session.commit()
@@ -150,9 +166,6 @@ def comentar(comunicado_id):
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
-# =============================================
-# ROTAS LGPD
-# =============================================
 @app.route('/termos', methods=['GET', 'POST'])
 def termos():
     if request.method == 'POST':
@@ -161,9 +174,30 @@ def termos():
             return redirect(url_for('index'))
     return render_template('termos.html')
 
-# =============================================
-# INICIALIZAÇÃO
-# =============================================
+@app.route('/solicitar_exclusao', methods=['POST'])
+def solicitar_exclusao():
+    email = request.form.get('email', '').strip()
+    if not email:
+        flash('Por favor, forneça um e-mail válido', 'danger')
+        return redirect(url_for('termos'))
+    
+    try:
+        flash('Solicitação de exclusão recebida. Verifique seu e-mail para confirmação.', 'info')
+    except Exception as e:
+        flash('Erro ao processar sua solicitação', 'danger')
+    
+    return redirect(url_for('index'))
+
+@app.route('/health')
+def health_check():
+    db_ok = verificar_conexao_banco()
+    status = {
+        'database': 'online' if db_ok else 'offline',
+        'status': 'up' if db_ok else 'down'
+    }
+    return jsonify(status), 200 if db_ok else 500
+
+# Inicialização
 with app.app_context():
     db.create_all()
 
