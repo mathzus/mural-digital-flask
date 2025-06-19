@@ -5,7 +5,8 @@ from datetime import datetime
 import os
 from cryptography.fernet import Fernet
 from markupsafe import escape
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import text  # Importação adicionada
+from sqlalchemy.exc import OperationalError, SQLAlchemyError  # Exceção mais abrangente
 
 app = Flask(__name__)
 
@@ -21,8 +22,11 @@ cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', '').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,  # Reconecta automaticamente se a conexão cair
-    'pool_recycle': 300,    # Recicla conexões a cada 5 minutos
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+    'pool_timeout': 30,
+    'max_overflow': 10,
+    'pool_size': 5
 }
 db = SQLAlchemy(app)
 
@@ -53,18 +57,20 @@ class Comunicado(db.Model):
     categoria = db.Column(db.String(50), default='comunicado')
 
 # =============================================
-# VERIFICAÇÃO DE CONEXÃO COM O BANCO
+# VERIFICAÇÃO DE CONEXÃO COM O BANCO (CORRIGIDA)
 # =============================================
 def verificar_conexao_banco():
     try:
-        db.session.execute("SELECT 1")
+        db.session.execute(text("SELECT 1"))  # Corrigido com text()
+        db.session.commit()
         return True
-    except OperationalError as e:
-        print(f"Erro de conexão com o banco: {str(e)}")
+    except Exception as e:  # Captura qualquer erro
+        db.session.rollback()
+        print(f"ERRO DE CONEXÃO: {str(e)}")  # Log detalhado
         return False
 
 # =============================================
-# ROTAS PRINCIPAIS
+# ROTAS PRINCIPAIS (ATUALIZADAS)
 # =============================================
 @app.route('/')
 def index():
@@ -79,6 +85,7 @@ def index():
         comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).all()
         return render_template('index.html', comunicados=comunicados)
     except Exception as e:
+        print(f"ERRO AO CARREGAR COMUNICADOS: {str(e)}")
         flash('Erro ao carregar comunicados', 'danger')
         return render_template('index.html', comunicados=[])
 
@@ -124,7 +131,8 @@ def adicionar_comunicado():
             return redirect(url_for('index'))
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao adicionar comunicado: {str(e)}', 'danger')
+            print(f"ERRO AO ADICIONAR: {str(e)}")
+            flash('Erro ao adicionar comunicado', 'danger')
     
     return render_template('adicionar.html')
 
@@ -143,11 +151,12 @@ def ver_comunicado(id):
         comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
         return render_template('comunicado.html', comunicado=comunicado)
     except Exception as e:
-        flash(f'Erro ao carregar comunicado: {str(e)}', 'danger')
+        print(f"ERRO AO VISUALIZAR: {str(e)}")
+        flash('Comunicado não encontrado', 'danger')
         return redirect(url_for('index'))
 
 # =============================================
-# ROTAS DE ENGAJAMENTO
+# ROTAS DE ENGAJAMENTO (MANTIDAS)
 # =============================================
 @app.route('/reagir/<int:comunicado_id>/<tipo>')
 def reagir(comunicado_id, tipo):
@@ -179,6 +188,7 @@ def reagir(comunicado_id, tipo):
             flash('Você já reagiu a este post', 'info')
     except Exception as e:
         db.session.rollback()
+        print(f"ERRO AO REAGIR: {str(e)}")
         flash('Erro ao processar sua reação', 'danger')
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
@@ -207,6 +217,7 @@ def comentar(comunicado_id):
         flash('Comentário adicionado!', 'success')
     except Exception as e:
         db.session.rollback()
+        print(f"ERRO AO COMENTAR: {str(e)}")
         flash('Erro ao adicionar comentário', 'danger')
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
@@ -225,12 +236,13 @@ def deletar_comentario(id):
         flash('Comentário removido!', 'success')
     except Exception as e:
         db.session.rollback()
+        print(f"ERRO AO DELETAR: {str(e)}")
         flash('Erro ao excluir comentário', 'danger')
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
 # =============================================
-# ROTAS LGPD
+# ROTAS LGPD (MANTIDAS)
 # =============================================
 @app.route('/termos', methods=['GET', 'POST'])
 def termos():
@@ -252,15 +264,15 @@ def solicitar_exclusao():
 
     try:
         email_cripto = cipher_suite.encrypt(email.encode()).decode()
-        # Aqui você salvaria email_cripto no banco de dados
         flash('Solicitação recebida. Seus dados serão processados em até 48h.', 'info')
     except Exception as e:
+        print(f"ERRO CRIPTOGRAFIA: {str(e)}")
         flash('Erro ao processar sua solicitação', 'danger')
     
     return redirect(url_for('index'))
 
 # =============================================
-# ROTAS AUXILIARES
+# ROTAS AUXILIARES (ATUALIZADAS)
 # =============================================
 @app.route('/deletar/<int:id>', methods=['POST'])
 def deletar_comunicado(id):
@@ -277,32 +289,32 @@ def deletar_comunicado(id):
         flash('Comunicado e dados relacionados removidos com sucesso!', 'success')
     except Exception as e:
         db.session.rollback()
+        print(f"ERRO AO DELETAR COMUNICADO: {str(e)}")
         flash('Erro ao excluir comunicado', 'danger')
     
     return redirect(url_for('index'))
 
 # =============================================
-# INICIALIZAÇÃO DO BANCO DE DADOS
+# INICIALIZAÇÃO DO BANCO DE DADOS (OTIMIZADA)
 # =============================================
 def inicializar_banco():
     with app.app_context():
-        try:
-            db.create_all()
-            print("✅ Banco de dados inicializado com sucesso!")
-            
-            # Verifica se as tabelas foram criadas corretamente
-            tabelas = db.engine.table_names()
-            print(f"📊 Tabelas existentes: {tabelas}")
-            
-        except Exception as e:
-            print(f"❌ Erro ao inicializar banco de dados: {str(e)}")
-            # Tentativa de reconexão
+        max_tentativas = 3
+        tentativa = 0
+        
+        while tentativa < max_tentativas:
             try:
-                db.session.rollback()
                 db.create_all()
-                print("✅ Reconexão bem-sucedida!")
-            except Exception as e2:
-                print(f"❌ Falha na reconexão: {str(e2)}")
+                print("✅ Banco de dados inicializado com sucesso!")
+                print(f"📊 Tabelas existentes: {db.engine.table_names()}")
+                break
+            except Exception as e:
+                tentativa += 1
+                print(f"❌ Tentativa {tentativa}/{max_tentativas}: {str(e)}")
+                db.session.rollback()
+                if tentativa == max_tentativas:
+                    print("🔥 Falha crítica ao inicializar o banco")
+                    raise
 
 inicializar_banco()
 
