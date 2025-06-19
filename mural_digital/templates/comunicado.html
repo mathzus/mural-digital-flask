@@ -7,9 +7,66 @@
         <h2 class="card-title">{{ comunicado.titulo }}</h2>
         <h6 class="card-subtitle mb-2 text-muted">{{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}</h6>
         <p class="card-text mt-4">{{ comunicado.conteudo|e|replace('\n', '<br>')|safe }}</p>
+        
+        <!-- Seção de Reações (Like/Urgente) -->
+        <div class="mt-3">
+            <a href="{{ url_for('reagir', comunicado_id=comunicado.id, tipo='like') }}" 
+               class="btn btn-sm btn-outline-primary">
+               👍 {{ Reacao.query.filter_by(comunicado_id=comunicado.id, tipo='like').count() }} Likes
+            </a>
+            <a href="{{ url_for('reagir', comunicado_id=comunicado.id, tipo='urgente') }}" 
+               class="btn btn-sm btn-outline-danger ms-2">
+               🔴 {{ Reacao.query.filter_by(comunicado_id=comunicado.id, tipo='urgente').count() }} Urgente
+            </a>
+        </div>
     </div>
 </div>
 
-<a href="{{ url_for('index') }}" class="btn btn-secondary">Voltar</a>
-<a href="{{ url_for('deletar_comunicado', id=comunicado.id) }}" class="btn btn-danger float-end" onclick="return confirm('Tem certeza?')">Excluir</a>
+<!-- Seção de Comentários -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">
+            <i class="bi bi-chat-left-text"></i> Comentários 
+            <span class="badge bg-primary rounded-pill">
+                {{ Comentario.query.filter_by(comunicado_id=comunicado.id).count() }}
+            </span>
+        </h5>
+    </div>
+    
+    <div class="card-body">
+        <!-- Lista de Comentários -->
+        {% for comentario in Comentario.query.filter_by(comunicado_id=comunicado.id).order_by(Comentario.data.desc()) %}
+        <div class="mb-3 pb-2 border-bottom">
+            <div class="d-flex justify-content-between">
+                <strong>{{ comentario.autor }}</strong>
+                <small class="text-muted">{{ comentario.data.strftime('%d/%m/%Y %H:%M') }}</small>
+            </div>
+            <p class="mt-1 mb-0">{{ comentario.texto }}</p>
+        </div>
+        {% endfor %}
+
+        <!-- Formulário para Novo Comentário -->
+        <form method="POST" action="{{ url_for('comentar', comunicado_id=comunicado.id) }}" class="mt-3">
+            <div class="mb-2">
+                <textarea class="form-control" name="texto" rows="3" 
+                          placeholder="Escreva seu comentário..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-send"></i> Enviar Comentário
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Botões de Ação -->
+<div class="d-flex justify-content-between mt-3">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+    <a href="{{ url_for('deletar_comunicado', id=comunicado.id) }}" 
+       class="btn btn-danger" 
+       onclick="return confirm('Tem certeza que deseja excluir este comunicado?')">
+       <i class="bi bi-trash"></i> Excluir
+    </a>
+</div>
 {% endblock %}

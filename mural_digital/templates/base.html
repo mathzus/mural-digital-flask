@@ -15,7 +15,7 @@
         body {
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding-bottom: 60px; /* Espaço para o botão flutuante */
+            padding-bottom: 80px; /* Ajuste para o botão flutuante + footer */
         }
         .navbar-custom {
             background-color: var(--cor-primaria) !important;
@@ -43,8 +43,9 @@
             font-size: 24px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
             position: fixed;
-            bottom: 20px;
+            bottom: 70px; /* Ajuste para não sobrepor o footer */
             right: 20px;
+            z-index: 1000;
         }
         .prioridade-alta {
             border-left: 4px solid #dc3545;
@@ -55,6 +56,19 @@
         .prioridade-baixa {
             border-left: 4px solid #28a745;
         }
+        .engagement-badge {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid #dee2e6;
+        }
+        footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: white;
+            padding: 10px 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            z-index: 999;
+        }
     </style>
 </head>
 <body>
@@ -64,16 +78,21 @@
             <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
                 <i class="bi bi-megaphone"></i> Mural Digital
             </a>
-            <div class="navbar-nav">
-                <a class="nav-link text-white" href="{{ url_for('dashboard') if 'dashboard' in url_for.__dict__ else '#' }}">
+            <div class="d-flex">
+                <a class="nav-link text-white me-3" href="{{ url_for('adicionar_comunicado') }}">
+                    <i class="bi bi-plus-circle"></i> Novo
+                </a>
+                {% if 'dashboard' in url_for.__dict__ %}
+                <a class="nav-link text-white" href="{{ url_for('dashboard') }}">
                     <i class="bi bi-graph-up"></i> Dashboard
                 </a>
+                {% endif %}
             </div>
         </div>
     </nav>
 
     <!-- Container principal -->
-    <div class="container py-4">
+    <div class="container py-4 mb-5">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
                 <div class="alert alert-{{ category }} alert-dismissible fade show">
@@ -92,11 +111,13 @@
     </a>
 
     <!-- Rodapé com link LGPD -->
-    <footer class="mt-5 py-3 text-center text-muted">
+    <footer class="text-center text-muted">
         <small>
             <a href="#" data-bs-toggle="modal" data-bs-target="#modalLGPD" class="text-decoration-none">
                 <i class="bi bi-shield-lock"></i> Solicitar exclusão de dados (LGPD)
             </a>
+            <span class="mx-2">•</span>
+            <span>Mural Digital v1.0</span>
         </small>
     </footer>
 
@@ -126,5 +147,14 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Script para tooltips -->
+    <script>
+        // Ativa tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    </script>
 </body>
 </html>
