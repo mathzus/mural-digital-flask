@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, g
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 import logging
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates')
 
 # Configurações
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-local')
