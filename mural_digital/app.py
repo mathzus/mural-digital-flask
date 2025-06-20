@@ -10,14 +10,13 @@ import logging
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_migrate import Migrate
 
 app = Flask(__name__, template_folder='templates')
 
-# Configurações FIXAS (substitua as chaves!)
-app.config['SECRET_KEY'] = 'SUA_CHAVE_SECRETA_AQUI_32_CARACTERES'  # Gere uma chave Fernet válida
-app.config['CHAVE_CRIPTOGRAFIA'] = 'SUA_CHAVE_CRIPTO_AQUI_32_CARACTERES'  # Gere outra chave Fernet
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
+# Configurações FIXAS (substitua as chaves se quiser)
+app.config['SECRET_KEY'] = 'sua_chave_secreta_32_caracteres_aqui'  # Pode manter assim ou gerar uma nova
+app.config['CHAVE_CRIPTOGRAFIA'] = 'sua_chave_cripto_32_caracteres_aqui'  # Pode manter assim ou gerar uma nova
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://mural_db_rkkn_user:aDbHbTqwyIoe8qCaD6hLwNi3ZhVm833t@dpg-d1absdmmcj7s73fck580-a.oregon-postgres.render.com/mural_db_rkkn'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
@@ -35,7 +34,6 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 
 # Configuração de logs
@@ -43,7 +41,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Modelos
+# Modelos (mantive todos os seus modelos originais)
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -100,7 +98,7 @@ def verificar_conexao_banco():
 def contar_reacoes(comunicado_id, tipo):
     return Reacao.query.filter_by(comunicado_id=comunicado_id, tipo=tipo).count()
 
-# Rotas de Autenticação
+# Rotas (mantive todas as suas rotas originais)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -156,7 +154,6 @@ def cadastro():
             flash('Erro ao cadastrar usuário', 'danger')
     return render_template('cadastro.html')
 
-# Rotas Principais
 @app.route('/')
 def index():
     if not verificar_conexao_banco():
@@ -299,7 +296,7 @@ def health_check():
     return jsonify({'status': 'healthy'}), 200
 
 # Inicialização do Banco de Dados
-def init_db():
+def criar_tabelas():
     with app.app_context():
         try:
             db.create_all()
@@ -312,11 +309,11 @@ def init_db():
                 )
                 db.session.add(admin)
                 db.session.commit()
-                logger.info("Usuário admin criado")
+                logger.info("✅ Tabelas criadas e usuário admin cadastrado!")
         except Exception as e:
-            logger.error(f"Erro ao inicializar banco: {str(e)}")
+            logger.error(f"Erro ao criar tabelas: {str(e)}")
 
-init_db()
+criar_tabelas()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
