@@ -10,12 +10,12 @@ import logging
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import base64
 
 app = Flask(__name__, template_folder='templates')
 
-# Configurações FIXAS (substitua as chaves se quiser)
+# Configurações FIXAS
 app.config['SECRET_KEY'] = 'sua_chave_secreta_32_caracteres_aqui'  # Pode manter assim ou gerar uma nova
-app.config['CHAVE_CRIPTOGRAFIA'] = 'sua_chave_cripto_32_caracteres_aqui'  # Pode manter assim ou gerar uma nova
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://mural_db_rkkn_user:aDbHbTqwyIoe8qCaD6hLwNi3ZhVm833t@dpg-d1absdmmcj7s73fck580-a.oregon-postgres.render.com/mural_db_rkkn'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -34,7 +34,6 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 db = SQLAlchemy(app)
-cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 
 # Configuração de logs
 logging.basicConfig(level=logging.INFO)
