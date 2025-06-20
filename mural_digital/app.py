@@ -14,10 +14,10 @@ from flask_migrate import Migrate
 
 app = Flask(__name__, template_folder='templates')
 
-# Configurações
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', Fernet.generate_key().decode())
-app.config['CHAVE_CRIPTOGRAFIA'] = os.environ.get('CHAVE_CRIPTOGRAFIA', Fernet.generate_key().decode())
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///mural.db').replace("postgres://", "postgresql://", 1)
+# Configurações FIXAS (substitua as chaves!)
+app.config['SECRET_KEY'] = 'SUA_CHAVE_SECRETA_AQUI_32_CARACTERES'  # Gere uma chave Fernet válida
+app.config['CHAVE_CRIPTOGRAFIA'] = 'SUA_CHAVE_CRIPTO_AQUI_32_CARACTERES'  # Gere outra chave Fernet
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
@@ -48,17 +48,17 @@ class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)  # Aumentado para 255 caracteres
+    password = db.Column(db.String(255), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     nome = db.Column(db.String(100), nullable=False)
-    comunicados = db.relationship('Comunicado', backref='autor', lazy=True)
+    comunicados = db.relationship('Comunicado', backref='autor', lazy=True, cascade="all, delete-orphan")
 
 class Reacao(db.Model):
     __tablename__ = 'reacoes'
     id = db.Column(db.Integer, primary_key=True)
     tipo = db.Column(db.String(20), nullable=False)
-    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id'))
-    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id', ondelete="CASCADE"))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"))
     comunicado = db.relationship('Comunicado', backref='reacoes')
     usuario = db.relationship('User')
 
@@ -67,8 +67,8 @@ class Comentario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     texto = db.Column(db.Text, nullable=False)
     data = db.Column(db.DateTime, default=datetime.utcnow)
-    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id'))
-    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id', ondelete="CASCADE"))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"))
     comunicado = db.relationship('Comunicado', backref='comentarios')
     usuario = db.relationship('User')
 
@@ -80,7 +80,7 @@ class Comunicado(db.Model):
     data_publicacao = db.Column(db.DateTime, default=datetime.utcnow)
     prioridade = db.Column(db.String(20), default='normal')
     categoria = db.Column(db.String(50), default='comunicado')
-    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
 
 # Configuração do Flask-Login
 @login_manager.user_loader
@@ -106,16 +106,13 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
         user = User.query.filter_by(username=username).first()
-        
         if user and check_password_hash(user.password, password):
             login_user(user)
             flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('index'))
         else:
             flash('Usuário ou senha incorretos', 'danger')
-    
     return render_template('login.html')
 
 @app.route('/logout')
@@ -157,7 +154,6 @@ def cadastro():
             db.session.rollback()
             logger.error(f"Erro ao cadastrar usuário: {str(e)}")
             flash('Erro ao cadastrar usuário', 'danger')
-    
     return render_template('cadastro.html')
 
 # Rotas Principais
@@ -166,7 +162,6 @@ def index():
     if not verificar_conexao_banco():
         flash('Erro de conexão com o banco de dados', 'danger')
         return render_template('index.html', comunicados=[])
-    
     comunicados = Comunicado.query.order_by(Comunicado.data_publicacao.desc()).limit(100).all()
     return render_template('index.html', comunicados=comunicados)
 
@@ -180,7 +175,6 @@ def adicionar_comunicado():
     if request.method == 'POST':
         titulo = request.form['titulo'].strip()
         conteudo = request.form['conteudo'].strip()
-        
         if not titulo or not conteudo:
             flash('Título e conteúdo são obrigatórios', 'danger')
             return redirect(url_for('adicionar_comunicado'))
@@ -201,46 +195,30 @@ def adicionar_comunicado():
             db.session.rollback()
             logger.error(f"Erro ao adicionar comunicado: {str(e)}")
             flash('Erro ao adicionar comunicado', 'danger')
-    
     return render_template('adicionar.html')
 
 @app.route('/comunicado/<int:id>')
 def ver_comunicado(id):
     comunicado = Comunicado.query.get_or_404(id)
     comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
-    
     reacao_usuario = None
     if current_user.is_authenticated:
-        reacao_usuario = Reacao.query.filter_by(
-            comunicado_id=id,
-            usuario_id=current_user.id
-        ).first()
-    
+        reacao_usuario = Reacao.query.filter_by(comunicado_id=id, usuario_id=current_user.id).first()
     likes = contar_reacoes(id, 'like')
     dislikes = contar_reacoes(id, 'dislike')
-    
-    return render_template(
-        'comunicado.html', 
-        comunicado=comunicado,
-        likes=likes,
-        dislikes=dislikes,
-        reacao_usuario=reacao_usuario.tipo if reacao_usuario else None,
-        autor=comunicado.autor
-    )
+    return render_template('comunicado.html', comunicado=comunicado, likes=likes, dislikes=dislikes,
+                         reacao_usuario=reacao_usuario.tipo if reacao_usuario else None, autor=comunicado.autor)
 
 @app.route('/deletar/<int:id>', methods=['POST'])
 @login_required
 def deletar_comunicado(id):
     comunicado = Comunicado.query.get_or_404(id)
-    
     if not current_user.is_admin and comunicado.usuario_id != current_user.id:
         flash('Você não tem permissão para excluir este comunicado', 'danger')
         return redirect(url_for('ver_comunicado', id=id))
-    
     try:
         Comentario.query.filter_by(comunicado_id=id).delete()
         Reacao.query.filter_by(comunicado_id=id).delete()
-        
         db.session.delete(comunicado)
         db.session.commit()
         flash('Comunicado deletado com sucesso!', 'success')
@@ -248,7 +226,6 @@ def deletar_comunicado(id):
         db.session.rollback()
         logger.error(f"Erro ao deletar comunicado: {str(e)}")
         flash('Erro ao deletar comunicado', 'danger')
-    
     return redirect(url_for('index'))
 
 @app.route('/reagir/<int:comunicado_id>/<tipo>')
@@ -257,13 +234,8 @@ def reagir(comunicado_id, tipo):
     if tipo not in ['like', 'dislike']:
         flash('Tipo de reação inválido', 'danger')
         return redirect(url_for('ver_comunicado', id=comunicado_id))
-
     try:
-        reacao_existente = Reacao.query.filter_by(
-            comunicado_id=comunicado_id,
-            usuario_id=current_user.id
-        ).first()
-
+        reacao_existente = Reacao.query.filter_by(comunicado_id=comunicado_id, usuario_id=current_user.id).first()
         if reacao_existente:
             if reacao_existente.tipo == tipo:
                 db.session.delete(reacao_existente)
@@ -272,20 +244,14 @@ def reagir(comunicado_id, tipo):
                 reacao_existente.tipo = tipo
                 flash('Reação atualizada', 'success')
         else:
-            nova_reacao = Reacao(
-                tipo=tipo,
-                comunicado_id=comunicado_id,
-                usuario_id=current_user.id
-            )
+            nova_reacao = Reacao(tipo=tipo, comunicado_id=comunicado_id, usuario_id=current_user.id)
             db.session.add(nova_reacao)
             flash('Reação registrada', 'success')
-        
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         logger.error(f"Erro ao registrar reação: {str(e)}")
         flash('Erro ao registrar reação', 'danger')
-    
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
 @app.route('/comentar/<int:comunicado_id>', methods=['POST'])
@@ -295,13 +261,8 @@ def comentar(comunicado_id):
     if not texto:
         flash('O comentário não pode estar vazio', 'danger')
         return redirect(url_for('ver_comunicado', id=comunicado_id))
-
     try:
-        novo_comentario = Comentario(
-            texto=texto,
-            comunicado_id=comunicado_id,
-            usuario_id=current_user.id
-        )
+        novo_comentario = Comentario(texto=texto, comunicado_id=comunicado_id, usuario_id=current_user.id)
         db.session.add(novo_comentario)
         db.session.commit()
         flash('Comentário adicionado!', 'success')
@@ -309,18 +270,15 @@ def comentar(comunicado_id):
         db.session.rollback()
         logger.error(f"Erro ao adicionar comentário: {str(e)}")
         flash('Erro ao adicionar comentário', 'danger')
-    
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
 @app.route('/excluir_comentario/<int:id>', methods=['POST'])
 @login_required
 def excluir_comentario(id):
     comentario = Comentario.query.get_or_404(id)
-    
     if comentario.usuario_id != current_user.id and not current_user.is_admin:
         flash('Você não tem permissão para excluir este comentário', 'danger')
-        return redirect(url_for('ver_comunicado', id=comunicado_id))
-    
+        return redirect(url_for('ver_comunicado', id=comentario.comunicado_id))
     try:
         db.session.delete(comentario)
         db.session.commit()
@@ -329,40 +287,37 @@ def excluir_comentario(id):
         db.session.rollback()
         logger.error(f"Erro ao excluir comentário: {str(e)}")
         flash('Erro ao excluir comentário', 'danger')
-    
     return redirect(url_for('ver_comunicado', id=comentario.comunicado_id))
 
-# Rota para aceitar termos
 @app.route('/termos', methods=['POST'])
 def termos():
     session['termos_aceitos'] = True
     return jsonify({'success': True})
 
-# Health check
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'healthy'}), 200
 
-# Inicialização
+# Inicialização do Banco de Dados
 def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Criar admin padrão se não existir
             if not User.query.filter_by(username='admin').first():
                 admin = User(
                     username='admin',
                     nome='Administrador',
-                    password=generate_password_hash('admin123', method='pbkdf2:sha256'),
+                    password=generate_password_hash('admin123'),
                     is_admin=True
                 )
                 db.session.add(admin)
                 db.session.commit()
                 logger.info("Usuário admin criado")
         except Exception as e:
-            logger.error(f"Erro ao inicializar banco de dados: {str(e)}")
+            logger.error(f"Erro ao inicializar banco: {str(e)}")
+
+init_db()
 
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true')
+    app.run(host='0.0.0.0', port=port)
