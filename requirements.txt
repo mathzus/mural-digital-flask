@@ -5,4 +5,4 @@ psycopg2-binary==2.9.10
 cryptography==41.0.7
 Flask-WTF==1.2.1
 Flask-Login==0.6.3
-Werkzeug==3.0.2  # Versão mínima requerida pelo Flask 3.1.1
+Werkzeug==3.1.0  # Versão mínima requerida pelo Flask 3.1.1
