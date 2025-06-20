@@ -10,13 +10,14 @@ import logging
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
 
 app = Flask(__name__, template_folder='templates')
 
 # Configurações
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', Fernet.generate_key().decode())
 app.config['CHAVE_CRIPTOGRAFIA'] = os.environ.get('CHAVE_CRIPTOGRAFIA', Fernet.generate_key().decode())
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///mural.db').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
@@ -34,6 +35,7 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 cipher_suite = Fernet(app.config['CHAVE_CRIPTOGRAFIA'].encode())
 
 # Configuração de logs
@@ -43,13 +45,16 @@ logger.setLevel(logging.INFO)
 
 # Modelos
 class User(UserMixin, db.Model):
+    __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(100), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     nome = db.Column(db.String(100), nullable=False)
+    comunicados = db.relationship('Comunicado', backref='autor', lazy=True)
 
 class Reacao(db.Model):
+    __tablename__ = 'reacao'
     id = db.Column(db.Integer, primary_key=True)
     tipo = db.Column(db.String(20), nullable=False)
     comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicado.id'))
@@ -58,6 +63,7 @@ class Reacao(db.Model):
     usuario = db.relationship('User')
 
 class Comentario(db.Model):
+    __tablename__ = 'comentario'
     id = db.Column(db.Integer, primary_key=True)
     texto = db.Column(db.Text, nullable=False)
     data = db.Column(db.DateTime, default=datetime.utcnow)
@@ -67,14 +73,14 @@ class Comentario(db.Model):
     usuario = db.relationship('User')
 
 class Comunicado(db.Model):
+    __tablename__ = 'comunicado'
     id = db.Column(db.Integer, primary_key=True)
     titulo = db.Column(db.String(100), nullable=False)
     conteudo = db.Column(db.Text, nullable=False)
     data_publicacao = db.Column(db.DateTime, default=datetime.utcnow)
     prioridade = db.Column(db.String(20), default='normal')
     categoria = db.Column(db.String(50), default='comunicado')
-    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    usuario = db.relationship('User')
+    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 # Configuração do Flask-Login
 @login_manager.user_loader
@@ -105,6 +111,7 @@ def login():
         
         if user and check_password_hash(user.password, password):
             login_user(user)
+            flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('index'))
         else:
             flash('Usuário ou senha incorretos', 'danger')
@@ -115,6 +122,7 @@ def login():
 @login_required
 def logout():
     logout_user()
+    flash('Você foi desconectado com sucesso', 'info')
     return redirect(url_for('index'))
 
 @app.route('/cadastro', methods=['GET', 'POST'])
@@ -218,7 +226,8 @@ def ver_comunicado(id):
         comunicado=comunicado,
         likes=likes,
         dislikes=dislikes,
-        reacao_usuario=reacao_usuario.tipo if reacao_usuario else None
+        reacao_usuario=reacao_usuario.tipo if reacao_usuario else None,
+        autor=comunicado.autor
     )
 
 @app.route('/deletar/<int:id>', methods=['POST'])
@@ -231,8 +240,11 @@ def deletar_comunicado(id):
         return redirect(url_for('ver_comunicado', id=id))
     
     try:
+        # Remover comentários e reações primeiro
         Comentario.query.filter_by(comunicado_id=id).delete()
         Reacao.query.filter_by(comunicado_id=id).delete()
+        
+        # Agora remover o comunicado
         db.session.delete(comunicado)
         db.session.commit()
         flash('Comunicado deletado com sucesso!', 'success')
@@ -247,6 +259,7 @@ def deletar_comunicado(id):
 @login_required
 def reagir(comunicado_id, tipo):
     if tipo not in ['like', 'dislike']:
+        flash('Tipo de reação inválido', 'danger')
         return redirect(url_for('ver_comunicado', id=comunicado_id))
 
     try:
@@ -261,9 +274,11 @@ def reagir(comunicado_id, tipo):
             if reacao_existente.tipo == tipo:
                 # Remove se for a mesma reação
                 db.session.delete(reacao_existente)
+                flash('Reação removida', 'info')
             else:
                 # Atualiza se for diferente
                 reacao_existente.tipo = tipo
+                flash('Reação atualizada', 'success')
         else:
             # Adiciona nova reação
             nova_reacao = Reacao(
@@ -272,11 +287,13 @@ def reagir(comunicado_id, tipo):
                 usuario_id=current_user.id
             )
             db.session.add(nova_reacao)
+            flash('Reação registrada', 'success')
         
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         logger.error(f"Erro ao registrar reação: {str(e)}")
+        flash('Erro ao registrar reação', 'danger')
     
     return redirect(url_for('ver_comunicado', id=comunicado_id))
 
@@ -324,7 +341,16 @@ def excluir_comentario(id):
     
     return redirect(url_for('ver_comunicado', id=comentario.comunicado_id))
 
-# ... (mantenha as outras rotas como termos, health check, etc)
+# Rota para aceitar termos
+@app.route('/termos', methods=['POST'])
+def termos():
+    session['termos_aceitos'] = True
+    return jsonify({'success': True})
+
+# Health check
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'healthy'}), 200
 
 # Inicialização
 with app.app_context():
