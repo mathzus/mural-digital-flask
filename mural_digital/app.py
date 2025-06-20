@@ -45,42 +45,42 @@ logger.setLevel(logging.INFO)
 
 # Modelos
 class User(UserMixin, db.Model):
-    __tablename__ = 'user'
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(255), nullable=False)  # Aumentado para 255 caracteres
     is_admin = db.Column(db.Boolean, default=False)
     nome = db.Column(db.String(100), nullable=False)
     comunicados = db.relationship('Comunicado', backref='autor', lazy=True)
 
 class Reacao(db.Model):
-    __tablename__ = 'reacao'
+    __tablename__ = 'reacoes'
     id = db.Column(db.Integer, primary_key=True)
     tipo = db.Column(db.String(20), nullable=False)
-    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicado.id'))
-    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id'))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     comunicado = db.relationship('Comunicado', backref='reacoes')
     usuario = db.relationship('User')
 
 class Comentario(db.Model):
-    __tablename__ = 'comentario'
+    __tablename__ = 'comentarios'
     id = db.Column(db.Integer, primary_key=True)
     texto = db.Column(db.Text, nullable=False)
     data = db.Column(db.DateTime, default=datetime.utcnow)
-    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicado.id'))
-    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    comunicado_id = db.Column(db.Integer, db.ForeignKey('comunicados.id'))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     comunicado = db.relationship('Comunicado', backref='comentarios')
     usuario = db.relationship('User')
 
 class Comunicado(db.Model):
-    __tablename__ = 'comunicado'
+    __tablename__ = 'comunicados'
     id = db.Column(db.Integer, primary_key=True)
     titulo = db.Column(db.String(100), nullable=False)
     conteudo = db.Column(db.Text, nullable=False)
     data_publicacao = db.Column(db.DateTime, default=datetime.utcnow)
     prioridade = db.Column(db.String(20), default='normal')
     categoria = db.Column(db.String(50), default='comunicado')
-    usuario_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
 # Configuração do Flask-Login
 @login_manager.user_loader
@@ -144,7 +144,7 @@ def cadastro():
         new_user = User(
             username=username,
             nome=nome,
-            password=generate_password_hash(password),
+            password=generate_password_hash(password, method='pbkdf2:sha256'),
             is_admin=False
         )
         
@@ -209,7 +209,6 @@ def ver_comunicado(id):
     comunicado = Comunicado.query.get_or_404(id)
     comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
     
-    # Verificar se o usuário já reagiu
     reacao_usuario = None
     if current_user.is_authenticated:
         reacao_usuario = Reacao.query.filter_by(
@@ -217,7 +216,6 @@ def ver_comunicado(id):
             usuario_id=current_user.id
         ).first()
     
-    # Contar reações
     likes = contar_reacoes(id, 'like')
     dislikes = contar_reacoes(id, 'dislike')
     
@@ -240,11 +238,9 @@ def deletar_comunicado(id):
         return redirect(url_for('ver_comunicado', id=id))
     
     try:
-        # Remover comentários e reações primeiro
         Comentario.query.filter_by(comunicado_id=id).delete()
         Reacao.query.filter_by(comunicado_id=id).delete()
         
-        # Agora remover o comunicado
         db.session.delete(comunicado)
         db.session.commit()
         flash('Comunicado deletado com sucesso!', 'success')
@@ -263,24 +259,19 @@ def reagir(comunicado_id, tipo):
         return redirect(url_for('ver_comunicado', id=comunicado_id))
 
     try:
-        # Verificar se já existe reação deste usuário
         reacao_existente = Reacao.query.filter_by(
             comunicado_id=comunicado_id,
             usuario_id=current_user.id
         ).first()
 
         if reacao_existente:
-            # Se já reagiu, atualiza ou remove a reação
             if reacao_existente.tipo == tipo:
-                # Remove se for a mesma reação
                 db.session.delete(reacao_existente)
                 flash('Reação removida', 'info')
             else:
-                # Atualiza se for diferente
                 reacao_existente.tipo = tipo
                 flash('Reação atualizada', 'success')
         else:
-            # Adiciona nova reação
             nova_reacao = Reacao(
                 tipo=tipo,
                 comunicado_id=comunicado_id,
@@ -328,7 +319,7 @@ def excluir_comentario(id):
     
     if comentario.usuario_id != current_user.id and not current_user.is_admin:
         flash('Você não tem permissão para excluir este comentário', 'danger')
-        return redirect(url_for('ver_comunicado', id=comentario.comunicado_id))
+        return redirect(url_for('ver_comunicado', id=comunicado_id))
     
     try:
         db.session.delete(comentario)
@@ -353,23 +344,25 @@ def health_check():
     return jsonify({'status': 'healthy'}), 200
 
 # Inicialização
-with app.app_context():
-    try:
-        db.create_all()
-        # Criar um admin padrão se não existir (apenas para desenvolvimento)
-        if not User.query.filter_by(username='admin').first():
-            admin = User(
-                username='admin',
-                nome='Administrador',
-                password=generate_password_hash('admin123'),
-                is_admin=True
-            )
-            db.session.add(admin)
-            db.session.commit()
-            logger.info("Usuário admin criado")
-    except Exception as e:
-        logger.error(f"Erro ao inicializar banco de dados: {str(e)}")
+def init_db():
+    with app.app_context():
+        try:
+            db.create_all()
+            # Criar admin padrão se não existir
+            if not User.query.filter_by(username='admin').first():
+                admin = User(
+                    username='admin',
+                    nome='Administrador',
+                    password=generate_password_hash('admin123', method='pbkdf2:sha256'),
+                    is_admin=True
+                )
+                db.session.add(admin)
+                db.session.commit()
+                logger.info("Usuário admin criado")
+        except Exception as e:
+            logger.error(f"Erro ao inicializar banco de dados: {str(e)}")
 
 if __name__ == '__main__':
+    init_db()
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true')
