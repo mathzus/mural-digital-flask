@@ -15,7 +15,7 @@ import base64
 app = Flask(__name__, template_folder='templates')
 
 # Configurações FIXAS
-app.config['SECRET_KEY'] = 'sua_chave_secreta_32_caracteres_aqui'  # Pode manter assim ou gerar uma nova
+app.config['SECRET_KEY'] = 'sua_chave_secreta_32_caracteres_aqui'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://mural_db_rkkn_user:aDbHbTqwyIoe8qCaD6hLwNi3ZhVm833t@dpg-d1absdmmcj7s73fck580-a.oregon-postgres.render.com/mural_db_rkkn'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Modelos (mantive todos os seus modelos originais)
+# Modelos
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -79,12 +79,10 @@ class Comunicado(db.Model):
     categoria = db.Column(db.String(50), default='comunicado')
     usuario_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
 
-# Configuração do Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Funções auxiliares
 def verificar_conexao_banco():
     try:
         with db.engine.connect() as conn:
@@ -97,7 +95,6 @@ def verificar_conexao_banco():
 def contar_reacoes(comunicado_id, tipo):
     return Reacao.query.filter_by(comunicado_id=comunicado_id, tipo=tipo).count()
 
-# Rotas (mantive todas as suas rotas originais)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -195,15 +192,36 @@ def adicionar_comunicado():
 
 @app.route('/comunicado/<int:id>')
 def ver_comunicado(id):
-    comunicado = Comunicado.query.get_or_404(id)
-    comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
-    reacao_usuario = None
-    if current_user.is_authenticated:
-        reacao_usuario = Reacao.query.filter_by(comunicado_id=id, usuario_id=current_user.id).first()
-    likes = contar_reacoes(id, 'like')
-    dislikes = contar_reacoes(id, 'dislike')
-    return render_template('comunicado.html', comunicado=comunicado, likes=likes, dislikes=dislikes,
-                         reacao_usuario=reacao_usuario.tipo if reacao_usuario else None, autor=comunicado.autor)
+    try:
+        comunicado = Comunicado.query.get_or_404(id)
+        if not comunicado:
+            flash('Comunicado não encontrado', 'danger')
+            return redirect(url_for('index'))
+            
+        comunicado.conteudo = escape(comunicado.conteudo).replace('\n', '<br>')
+        
+        reacao_usuario = None
+        if current_user.is_authenticated:
+            reacao_usuario = Reacao.query.filter_by(
+                comunicado_id=id,
+                usuario_id=current_user.id
+            ).first()
+        
+        likes = contar_reacoes(id, 'like')
+        dislikes = contar_reacoes(id, 'dislike')
+        
+        return render_template(
+            'comunicado.html',
+            comunicado=comunicado,
+            likes=likes,
+            dislikes=dislikes,
+            reacao_usuario=reacao_usuario.tipo if reacao_usuario else None,
+            autor=comunicado.autor
+        )
+    except Exception as e:
+        logger.error(f"Erro ao visualizar comunicado {id}: {str(e)}")
+        flash('Ocorreu um erro ao carregar o comunicado', 'danger')
+        return redirect(url_for('index'))
 
 @app.route('/deletar/<int:id>', methods=['POST'])
 @login_required
@@ -294,7 +312,6 @@ def termos():
 def health_check():
     return jsonify({'status': 'healthy'}), 200
 
-# Inicialização do Banco de Dados
 def criar_tabelas():
     with app.app_context():
         try:

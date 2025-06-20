@@ -12,10 +12,10 @@
         <span class="badge bg-secondary float-end">{{ comunicado.categoria }}</span>
         <h2 class="card-title">{{ comunicado.titulo }}</h2>
         <h6 class="card-subtitle mb-2 text-muted">
-            <i class="bi bi-person"></i> {{ comunicado.usuario.nome }}
+            <i class="bi bi-person"></i> {{ comunicado.autor.nome if comunicado.autor else 'Autor desconhecido' }}
             <span class="ms-3"><i class="bi bi-calendar"></i> {{ comunicado.data_publicacao.strftime('%d/%m/%Y %H:%M') }}</span>
         </h6>
-        <p class="card-text mt-4">{{ comunicado.conteudo|replace('\n', '<br>')|safe }}</p>
+        <div class="card-text mt-4">{{ comunicado.conteudo|safe }}</div>
         
         <div class="mt-3">
             <a href="{{ url_for('reagir', comunicado_id=comunicado.id, tipo='like') }}" 
@@ -41,7 +41,7 @@
         <div class="mb-3 border-bottom pb-2">
             <div class="d-flex justify-content-between">
                 <div>
-                    <strong>{{ comentario.usuario.nome }}</strong>
+                    <strong>{{ comentario.usuario.nome if comentario.usuario else 'Usuário desconhecido' }}</strong>
                     <small class="text-muted ms-2">{{ comentario.data.strftime('%d/%m/%Y %H:%M') }}</small>
                 </div>
                 {% if current_user.is_authenticated and (current_user.id == comentario.usuario_id or current_user.is_admin) %}
@@ -57,6 +57,7 @@
         </div>
         {% endfor %}
 
+        {% if current_user.is_authenticated %}
         <form method="POST" action="{{ url_for('comentar', comunicado_id=comunicado.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="mb-3">
@@ -67,6 +68,11 @@
                 <i class="bi bi-send"></i> Enviar
             </button>
         </form>
+        {% else %}
+        <div class="alert alert-info">
+            <a href="{{ url_for('login') }}" class="alert-link">Faça login</a> para comentar.
+        </div>
+        {% endif %}
     </div>
 </div>
 
