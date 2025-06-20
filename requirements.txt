@@ -4,3 +4,5 @@ gunicorn==23.0.0
 psycopg2-binary==2.9.10
 cryptography==41.0.7
 Flask-WTF==1.2.1
+Flask-Login==0.6.3
+werkzeug==3.0.1  # Para hash de senhas
