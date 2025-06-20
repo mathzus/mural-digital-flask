@@ -113,8 +113,8 @@
 
     <footer class="text-center text-muted">
         <small>
-            <a href="#" data-bs-toggle="modal" data-bs-target="#modalLGPD" class="text-decoration-none">
-                <i class="bi bi-shield-lock"></i> Solicitar exclusão de dados (LGPD)
+            <a href="#" class="text-decoration-none">
+                <i class="bi bi-shield-lock"></i> Política de Privacidade
             </a>
             <span class="mx-2">•</span>
             <span>Mural Digital v1.0</span>
@@ -148,30 +148,6 @@
         </div>
     </div>
     {% endif %}
-
-    <!-- Modal LGPD -->
-    <div class="modal fade" id="modalLGPD" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="bi bi-shield-lock"></i> Direitos LGPD</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="POST" action="{{ url_for('solicitar_exclusao') }}">
-                        <div class="mb-3">
-                            <label class="form-label">Seu e-mail cadastrado</label>
-                            <input type="email" class="form-control" name="email" required>
-                            <small class="text-muted">Solicitaremos a confirmação por e-mail.</small>
-                        </div>
-                        <button type="submit" class="btn btn-danger w-100">
-                            <i class="bi bi-trash"></i> Solicitar exclusão
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
