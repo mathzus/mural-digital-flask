@@ -8,3 +8,4 @@ Flask-Login==0.6.3
 Werkzeug==2.3.7
 Flask-Migrate==4.0.5
 python-dotenv==1.0.0
+alembic==1.16.2
