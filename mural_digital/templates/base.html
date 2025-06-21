@@ -58,8 +58,8 @@
             z-index: 999;
         }
         /* Modal de termos */
-        #termosModal {
-            background-color: rgba(0,0,0,0.5);
+        .modal-backdrop {
+            opacity: 0.5 !important;
         }
         #termosModal .modal-content {
             border-radius: 15px;
@@ -131,7 +131,7 @@
 
     <!-- Modal de Termos -->
     {% if not session.get('termos_aceitos') %}
-    <div class="modal fade show" id="termosModal" tabindex="-1" aria-labelledby="termosModalLabel" aria-hidden="false" style="display: block;">
+    <div class="modal" id="termosModal" tabindex="-1" aria-labelledby="termosModalLabel" aria-hidden="true" data-bs-backdrop="static">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
@@ -180,6 +180,15 @@
     <script>
         // Controle do modal de termos
         document.addEventListener('DOMContentLoaded', function() {
+            // Mostra o modal de termos automaticamente se necessário
+            {% if not session.get('termos_aceitos') %}
+            var termosModal = new bootstrap.Modal(document.getElementById('termosModal'), {
+                backdrop: 'static',
+                keyboard: false
+            });
+            termosModal.show();
+            {% endif %}
+
             const concordoCheck = document.getElementById('concordoCheck');
             const btnAceitarTermos = document.getElementById('btnAceitarTermos');
             
@@ -200,9 +209,12 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            const termosModal = bootstrap.Modal.getInstance(document.getElementById('termosModal'));
                             termosModal.hide();
-                            location.reload();
+                            document.body.classList.remove('modal-open');
+                            const backdrop = document.querySelector('.modal-backdrop');
+                            if (backdrop) {
+                                backdrop.remove();
+                            }
                         }
                     });
                 });
